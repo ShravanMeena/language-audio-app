@@ -1,10 +1,9 @@
 import React, { useEffect, useState, useRef } from "react";
 import { auth, provider, db } from "./firebase/firebase";
 import { signInWithPopup, onAuthStateChanged, signOut } from "firebase/auth";
-import { collection, doc, setDoc, getDoc, updateDoc } from "firebase/firestore";
+import { doc, setDoc, getDoc, updateDoc } from "firebase/firestore";
 import io from "socket.io-client";
 import SimplePeer from "simple-peer";
-import "./styles.css";
 
 const SERVER_URL = "http://localhost:8000"; // Replace with your actual server URL
 const socket = io(SERVER_URL);
@@ -12,7 +11,7 @@ const socket = io(SERVER_URL);
 const App = () => {
   const [user, setUser] = useState(null);
   const [activeUsers, setActiveUsers] = useState([]);
-  const [language, setLanguage] = useState("");
+  const [language, setLanguage] = useState("English");
   const [stream, setStream] = useState(null);
   const [peer, setPeer] = useState(null);
   const [incomingCall, setIncomingCall] = useState(null);
@@ -34,7 +33,7 @@ const App = () => {
             name: user.displayName,
             profilePic: user.photoURL,
             language: userData.language || "English",
-            status: isInCall ? "Busy" : "Available"
+            status: isInCall ? "Busy" : "Available",
           },
           { merge: true }
         );
@@ -44,7 +43,7 @@ const App = () => {
           name: user.displayName,
           profilePic: user.photoURL,
           language: userData.language || "English",
-          status: isInCall ? "Busy" : "Available"
+          status: isInCall ? "Busy" : "Available",
         });
       } else {
         setUser(null);
@@ -55,9 +54,13 @@ const App = () => {
       setActiveUsers(users);
     });
 
-    socket.on("incomingCall", ({ callerId, signal }) => {
-      setIncomingCall({ callerId, signal });
+    // socket.on("incomingCall", ({ callerId, signal }) => {
+    //   setIncomingCall({ callerId, signal });
+    // });
+    socket.on("incomingCall", ({ callerId, callerName, callerProfilePic, signal }) => {
+      setIncomingCall({ callerId, callerName, callerProfilePic, signal });
     });
+
 
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
@@ -80,7 +83,15 @@ const App = () => {
     setPeer(peer);
 
     peer.on("signal", (data) => {
-      socket.emit("startCall", { callerId: user.uid, receiverId, signal: data });
+      // socket.emit("startCall", { callerId: user.uid, receiverId, signal: data });
+      socket.emit("startCall", {
+        callerId: user.uid,
+        callerName: user.displayName,
+        callerProfilePic: user.photoURL,
+        receiverId,
+        signal: data
+      });
+
     });
 
     peer.on("stream", (remoteStream) => {
@@ -132,7 +143,7 @@ const App = () => {
       .then((result) => {
         const user = result.user;
         setUser(user);
-  
+
         setDoc(
           doc(db, "users", user.uid),
           {
@@ -144,7 +155,7 @@ const App = () => {
           },
           { merge: true }
         );
-  
+
         socket.emit("join", {
           uid: user.uid,
           name: user.displayName,
@@ -155,71 +166,148 @@ const App = () => {
       })
       .catch((error) => console.error("Sign-in error", error));
   };
-  
+
   const handleLogout = async () => {
     await signOut(auth);
     socket.disconnect();
     setUser(null);
   };
 
-
   const rejectCall = () => {
     if (incomingCall) {
       socket.emit("callRejected", { callerId: incomingCall.callerId });
-      setIncomingCall(null); // Clear incoming call state
-      setIsInCall(false); // Ensure "End Call" button disappears
+      setIncomingCall(null);
+      setIsInCall(false);
     }
   };
-  
+
   useEffect(() => {
     socket.on("callEnded", () => {
       setPeer(null);
       setStream(null);
       setIncomingCall(null);
-      setIsInCall(false); // Ensure "End Call" button disappears
+      setIsInCall(false);
     });
-  
+
     return () => socket.off("callEnded");
   }, []);
 
   return (
-    <div className="container">
+    <div className="min-h-screen bg-gray-100 flex justify-center items-center p-4">
       {user ? (
-        <div>
-          <h2>Welcome, {user.displayName}</h2>
-          <select value={language} onChange={(e) => setLanguage(e.target.value)}>
-            <option value="English">English</option>
-            <option value="Spanish">Spanish</option>
-            <option value="French">French</option>
-          </select>
-          <button onClick={handleLogout}>Logout</button>
+        <div className="bg-white rounded-2xl shadow-lg p-6 w-full max-w-xl">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-bold">Welcome, {user.displayName}</h2>
+            <button
+              className="bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded-lg"
+              onClick={handleLogout}
+            >
+              Logout
+            </button>
+          </div>
+
+          <div className="mb-4">
+            <label className="block text-gray-600 mb-2">Select Language</label>
+            <select
+              className="w-full p-2 border rounded-lg"
+              value={language}
+              onChange={(e) => setLanguage(e.target.value)}
+            >
+              <option value="English">English</option>
+              <option value="Spanish">Spanish</option>
+              <option value="French">French</option>
+            </select>
+          </div>
 
           {incomingCall && (
-            <div className="call-notification">
-              <h3>Incoming Call from {incomingCall.callerId}</h3>
-              <button onClick={acceptCall}>Accept</button>
-              <button onClick={() => rejectCall()}>Reject</button>
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
+              {console.log(incomingCall, 'incoming call')}
+              <div className="bg-white rounded-2xl shadow-xl p-6 text-center w-full max-w-md animate-fadeIn">
+                <h3 className="text-lg font-semibold mb-2">Incoming Call 📞</h3>
+                <div className="flex flex-col items-center mb-4">
+                  <img
+                    src={incomingCall.callerProfilePic}
+                    alt={incomingCall.callerName}
+                    className="w-20 h-20 rounded-full object-cover mb-2 border-2 border-gray-300 shadow-md"
+                  />
+
+                  <p className="text-gray-800 font-bold text-lg">
+                    {incomingCall.callerName}
+                  </p>
+                  <p className="text-gray-600">is calling you!</p>
+                </div>
+                {/* <p className="text-gray-600 mb-4">{incomingCall.callerName} is calling you!</p> */}
+                <div className="flex justify-center gap-4">
+                  <button
+                    className="bg-green-500 hover:bg-green-600 text-white py-2 px-4 rounded-lg"
+                    onClick={acceptCall}
+                  >
+                    Accept
+                  </button>
+                  <button
+                    className="bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded-lg"
+                    onClick={rejectCall}
+                  >
+                    Reject
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
-          <h3>Active Users</h3>
-          <ul>
-            {activeUsers.map((u) => (
-              <li key={u.uid} className={u.status === "Busy" ? "busy" : "available"}>
-                <img src={u.profilePic} alt={u.name} className="avatar" />
-                {u.name} ({u.language}) - {u.status}
-                {u.status === "Available" && u.uid !== user.uid && (
-                  <button onClick={() => startCall(u.uid)}>Call</button>
-                )}
-                {u.status === "Busy" && <button onClick={endCall}>End Call</button>}
-              </li>
-            ))}
-          </ul>
-
+          <h3 className="text-lg font-semibold mt-6 mb-4">Active Users</h3>
+          <div className="max-h-64 overflow-y-auto">
+            <ul className="space-y-4">
+              {activeUsers.map((u) => (
+                <li
+                  key={u.uid}
+                  className={`flex justify-between items-center p-4 rounded-lg shadow-sm ${u.status === "Busy" ? "border-l-4 border-red-500 bg-gray-50" : "border-l-4 border-green-500 bg-white"}`}
+                >
+                  <div className="flex items-center">
+                    <img
+                      src={u.profilePic}
+                      alt={u.name}
+                      className="w-12 h-12 rounded-full object-cover mr-4"
+                    />
+                    <div>
+                      <div className="font-semibold">{u.name}</div>
+                      <div className="text-sm text-gray-500">{u.language}</div>
+                    </div>
+                  </div>
+                  <div>
+                    {u.status === "Available" && u.uid !== user.uid && (
+                      <button
+                        className="bg-green-500 hover:bg-green-600 text-white py-1 px-3 rounded-lg"
+                        onClick={() => startCall(u.uid)}
+                      >
+                        Call
+                      </button>
+                    )}
+                    {u.status === "Busy" && (
+                      <button
+                        className="bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded-lg"
+                        onClick={endCall}
+                      >
+                        End Call
+                      </button>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
           <audio ref={remoteAudio} autoPlay />
         </div>
       ) : (
-        <button onClick={handleSignIn}>Login with Google</button>
+        <div className="text-center">
+          <h2 className="text-2xl font-bold mb-6">Welcome to Voice Chat App</h2>
+          <button
+            className="bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-lg"
+            onClick={handleSignIn}
+          >
+            Login with Google
+          </button>
+        </div>
       )}
     </div>
   );

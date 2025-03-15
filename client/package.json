@@ -7,14 +7,16 @@
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.2.0",
     "@testing-library/user-event": "^13.5.0",
+    "autoprefixer": "^10.4.14",
     "firebase": "^11.4.0",
+    "postcss": "^8.4.21",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.3.0",
     "react-scripts": "5.0.1",
     "simple-peer": "^9.11.1",
     "socket.io-client": "^4.8.1",
-    "tailwindcss": "^4.0.14",
+    "tailwindcss": "^3.4.1",
     "web-vitals": "^2.1.4",
     "webrtc-adapter": "^9.0.1"
   },
@@ -43,9 +45,10 @@
     ]
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.0.14",
     "ajv": "^7.2.4"
   },
   "browser": {
-  "process": false
-}
+    "process": false
+  }
 }
