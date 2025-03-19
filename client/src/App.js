@@ -21,6 +21,39 @@ const App = () => {
   const [currentCall, setCurrentCall] = useState(null); // Track the ongoing call
   const callTimeoutRef = useRef(null); // Reference for call timeout
 
+  const ringtone = new Audio("/ringtone.mp3");
+  let ringtoneInterval = null;
+
+  const startRingtone = () => {
+    // Start the ringtone playing on loop until the user accepts or rejects the call
+    ringtone.loop = true;  // Enable looping
+    ringtone.play().catch((error) => {
+      console.error("Error playing ringtone:", error);
+    });
+  
+    // Play ringtone at intervals (to keep it playing)
+    ringtoneInterval = setInterval(() => {
+      ringtone.play().catch((error) => {
+        console.error("Error playing ringtone at interval:", error);
+      });
+    }, 3000); // Play every 3 seconds, you can adjust the interval as needed
+  };
+  
+
+  useEffect(() => {
+    const audioContextUnlock = () => {
+      ringtone.play();  // Play to unlock the context
+      ringtone.pause();  // Pause immediately to stop playing sound
+    };
+
+    // This will run after the first user interaction (e.g., login)
+    if (user) {
+      audioContextUnlock();  // Unlock audio after user login
+    }
+
+    return () => window.removeEventListener("click", audioContextUnlock);
+  }, [user]);
+
   useEffect(() => {
     onAuthStateChanged(auth, async (user) => {
       if (user) {
@@ -60,10 +93,7 @@ const App = () => {
     socket.on("incomingCall", ({ callerId, callerName, callerProfilePic, signal }) => {
       setIncomingCall({ callerId, callerName, callerProfilePic, signal });
 
-      // **Auto end call if unanswered after 20 seconds**
-      callTimeoutRef.current = setTimeout(() => {
-        rejectCall();
-      }, 20000);
+      startRingtone();
     });
 
     window.addEventListener("beforeunload", handleBeforeUnload);
@@ -72,6 +102,7 @@ const App = () => {
       if (callTimeoutRef.current) clearTimeout(callTimeoutRef.current);
     };
   }, [isInCall]);
+  
   const handleBeforeUnload = (event) => {
     if (isInCall) {
       event.preventDefault();
@@ -109,6 +140,12 @@ const App = () => {
   };
 
   const acceptCall = async () => {
+
+    if (ringtoneInterval) {
+      clearInterval(ringtoneInterval); // Stop repeating the ringtone
+      ringtone.pause(); // Pause the current ringtone
+      ringtone.currentTime = 0; // Reset the audio to the start
+    }
     clearTimeout(callTimeoutRef.current); // Clear auto-end timeout
 
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -133,6 +170,9 @@ const App = () => {
     });
 
     setIncomingCall(null);
+
+    ringtone.pause();
+    ringtone.currentTime = 0;
   };
 
   const endCall = async () => {
@@ -164,6 +204,10 @@ const App = () => {
     if (remoteAudio.current) {
       remoteAudio.current.srcObject = null;
     }
+
+    // Pause ringtone when call ends
+    ringtone.pause();
+    ringtone.currentTime = 0;
   };
 
   const handleSignIn = () => {
@@ -202,6 +246,12 @@ const App = () => {
   };
 
   const rejectCall = () => {
+
+    if (ringtoneInterval) {
+      clearInterval(ringtoneInterval); // Stop repeating the ringtone
+      ringtone.pause(); // Pause the current ringtone
+      ringtone.currentTime = 0; // Reset the audio to the start
+    }
     if (incomingCall) {
       socket.emit("callRejected", { callerId: incomingCall.callerId });
       setIncomingCall(null);
@@ -215,6 +265,8 @@ const App = () => {
       setStream(null);
       setIncomingCall(null);
       setIsInCall(false);
+      ringtone.pause();
+      ringtone.currentTime = 0; 
     });
 
     return () => socket.off("callEnded");
