@@ -46,7 +46,8 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.0.14",
-    "ajv": "^7.2.4"
+    "ajv": "^7.2.4",
+    "nodemon": "^3.1.9"
   },
   "browser": {
     "process": false

@@ -5,7 +5,7 @@ import { doc, setDoc, getDoc, updateDoc } from "firebase/firestore";
 import io from "socket.io-client";
 import SimplePeer from "simple-peer";
 
-const SERVER_URL = "http://localhost:8000"; // Replace with your actual server URL
+const SERVER_URL = "https://c08e-2409-40d0-31-90cf-4859-d4cd-9624-e368.ngrok-free.app/";
 const socket = io(SERVER_URL);
 
 const App = () => {
@@ -17,6 +17,8 @@ const App = () => {
   const [incomingCall, setIncomingCall] = useState(null);
   const [isInCall, setIsInCall] = useState(false);
   const remoteAudio = useRef();
+
+  const ringtone = new Audio("./ringtone.mp3"); // Replace with the correct path to your ringtone
 
   useEffect(() => {
     onAuthStateChanged(auth, async (user) => {
@@ -66,6 +68,12 @@ const App = () => {
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [isInCall]);
 
+  useEffect(() => {
+    if (incomingCall) {
+      ringtone.play();  // Play ringtone when there's an incoming call
+    }
+  }, [incomingCall]);  // Trigger when incoming call state changes
+  
   const handleBeforeUnload = (event) => {
     if (isInCall) {
       event.preventDefault();
@@ -104,6 +112,10 @@ const App = () => {
   };
 
   const acceptCall = async () => {
+
+    ringtone.pause();
+    ringtone.currentTime = 0; 
+
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     setStream(stream);
     setIsInCall(true);
@@ -125,6 +137,9 @@ const App = () => {
   };
 
   const endCall = async () => {
+    ringtone.pause();
+    ringtone.currentTime = 0; 
+
     if (peer) {
       peer.destroy();
       setPeer(null);
@@ -174,6 +189,10 @@ const App = () => {
   };
 
   const rejectCall = () => {
+
+    ringtone.pause();
+    ringtone.currentTime = 0; 
+
     if (incomingCall) {
       socket.emit("callRejected", { callerId: incomingCall.callerId });
       setIncomingCall(null);
