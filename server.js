@@ -76,33 +76,38 @@ io.on("connection", (socket) => {
 
   socket.on("endCall", ({ callerId }) => {
     const receiverId = ongoingCalls[callerId];
+    
     if (receiverId && activeUsers[receiverId]) {
-      io.to(activeUsers[receiverId].socketId).emit("callEnded");
-      activeUsers[receiverId].status = "Available";
+        io.to(activeUsers[receiverId].socketId).emit("callEnded");
+        activeUsers[receiverId].status = "Available";
     }
+    
     if (activeUsers[callerId]) {
-      activeUsers[callerId].status = "Available";
+        activeUsers[callerId].status = "Available";
+        io.to(activeUsers[callerId].socketId).emit("callEnded");
     }
+    
     delete ongoingCalls[callerId];
     delete ongoingCalls[receiverId];
 
     io.emit("updateUsers", Object.values(activeUsers));
+});
+ 
+
+socket.on("disconnect", () => {
+  let disconnectedUserId = null;
+
+  Object.keys(activeUsers).forEach((uid) => {
+      if (activeUsers[uid].socketId === socket.id) {
+          disconnectedUserId = uid;
+      }
   });
 
-  socket.on("disconnect", () => {
-    let disconnectedUserId = null;
-
-    Object.keys(activeUsers).forEach((uid) => {
-      if (activeUsers[uid].socketId === socket.id) {
-        disconnectedUserId = uid;
-      }
-    });
-
-    if (disconnectedUserId) {
+  if (disconnectedUserId) {
       const receiverId = ongoingCalls[disconnectedUserId];
       if (receiverId && activeUsers[receiverId]) {
-        io.to(activeUsers[receiverId].socketId).emit("callEnded");
-        activeUsers[receiverId].status = "Available";
+          io.to(activeUsers[receiverId].socketId).emit("callEnded");
+          activeUsers[receiverId].status = "Available";
       }
 
       delete activeUsers[disconnectedUserId];
@@ -110,8 +115,9 @@ io.on("connection", (socket) => {
       delete ongoingCalls[receiverId];
 
       io.emit("updateUsers", Object.values(activeUsers));
-    }
-  });
+  }
+});
+
 });
 
 server.listen(8000, () => console.log("Server running on port 8000"));
