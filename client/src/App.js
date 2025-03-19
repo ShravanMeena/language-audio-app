@@ -5,7 +5,8 @@ import { doc, setDoc, getDoc, updateDoc } from "firebase/firestore";
 import io from "socket.io-client";
 import SimplePeer from "simple-peer";
 
-const SERVER_URL = "https://c08e-2409-40d0-31-90cf-4859-d4cd-9624-e368.ngrok-free.app"; // Replace with your actual server URL
+const SERVER_URL =
+  "https://c08e-2409-40d0-31-90cf-4859-d4cd-9624-e368.ngrok-free.app"; // Replace with your actual server URL
 const socket = io(SERVER_URL);
 
 const App = () => {
@@ -17,7 +18,8 @@ const App = () => {
   const [incomingCall, setIncomingCall] = useState(null);
   const [isInCall, setIsInCall] = useState(false);
   const remoteAudio = useRef();
-  const [currentCall, setCurrentCall] = useState(null);  // Track the ongoing call
+  const [currentCall, setCurrentCall] = useState(null); // Track the ongoing call
+  const callTimeoutRef = useRef(null); // Reference for call timeout
 
   useEffect(() => {
     onAuthStateChanged(auth, async (user) => {
@@ -55,18 +57,21 @@ const App = () => {
       setActiveUsers(users);
     });
 
-    // socket.on("incomingCall", ({ callerId, signal }) => {
-    //   setIncomingCall({ callerId, signal });
-    // });
     socket.on("incomingCall", ({ callerId, callerName, callerProfilePic, signal }) => {
       setIncomingCall({ callerId, callerName, callerProfilePic, signal });
+
+      // **Auto end call if unanswered after 20 seconds**
+      callTimeoutRef.current = setTimeout(() => {
+        rejectCall();
+      }, 20000);
     });
 
-
     window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      if (callTimeoutRef.current) clearTimeout(callTimeoutRef.current);
+    };
   }, [isInCall]);
-
   const handleBeforeUnload = (event) => {
     if (isInCall) {
       event.preventDefault();
@@ -75,86 +80,91 @@ const App = () => {
     }
   };
 
-const startCall = async (receiverId) => {
+  const startCall = async (receiverId) => {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     setStream(stream);
     setIsInCall(true);
-    setCurrentCall(receiverId);  // Store receiver ID in state
+    setCurrentCall(receiverId); // Store receiver ID in state
 
     const peer = new SimplePeer({ initiator: true, trickle: false, stream });
     setPeer(peer);
 
     peer.on("signal", (data) => {
-        socket.emit("startCall", {
-            callerId: user.uid,
-            callerName: user.displayName,
-            callerProfilePic: user.photoURL,
-            receiverId,
-            signal: data
-        });
+      socket.emit("startCall", {
+        callerId: user.uid,
+        callerName: user.displayName,
+        callerProfilePic: user.photoURL,
+        receiverId,
+        signal: data,
+      });
     });
 
     peer.on("stream", (remoteStream) => {
-        remoteAudio.current.srcObject = remoteStream;
+      remoteAudio.current.srcObject = remoteStream;
     });
 
     socket.on("callAccepted", ({ signal }) => {
-        peer.signal(signal);
+      peer.signal(signal);
     });
-};
+  };
 
-const acceptCall = async () => {
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  setStream(stream);
-  setIsInCall(true);
-  setCurrentCall(incomingCall.callerId);  // Store caller ID in state
+  const acceptCall = async () => {
+    clearTimeout(callTimeoutRef.current); // Clear auto-end timeout
 
-  const peer = new SimplePeer({ initiator: false, trickle: false, stream });
-  setPeer(peer);
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    setStream(stream);
+    setIsInCall(true);
+    setCurrentCall(incomingCall.callerId); // Store caller ID in state
 
-  peer.signal(incomingCall.signal);
+    const peer = new SimplePeer({ initiator: false, trickle: false, stream });
+    setPeer(peer);
 
-  peer.on("signal", (data) => {
-      socket.emit("acceptCall", { callerId: incomingCall.callerId, signal: data });
-  });
+    peer.signal(incomingCall.signal);
 
-  peer.on("stream", (remoteStream) => {
+    peer.on("signal", (data) => {
+      socket.emit("acceptCall", {
+        callerId: incomingCall.callerId,
+        signal: data,
+      });
+    });
+
+    peer.on("stream", (remoteStream) => {
       remoteAudio.current.srcObject = remoteStream;
-  });
+    });
 
-  setIncomingCall(null);
-};
+    setIncomingCall(null);
+  };
 
-const endCall = async () => {
-  if (peer) {
-    console.log("Destroying peer connection...");
-    try {
-      if (typeof peer.destroy === "function") {
-        peer.destroy();
+  const endCall = async () => {
+    if (peer) {
+      console.log("Destroying peer connection...");
+      try {
+        if (typeof peer.destroy === "function") {
+          peer.destroy();
+        }
+      } catch (error) {
+        console.error("Error destroying peer:", error);
       }
-    } catch (error) {
-      console.error("Error destroying peer:", error);
+      setPeer(null);
     }
-    setPeer(null);
-  }
 
-  if (stream) {
-    stream.getTracks().forEach((track) => track.stop());
-    setStream(null);
-  }
+    if (stream) {
+      stream.getTracks().forEach((track) => track.stop());
+      setStream(null);
+    }
 
-  setIsInCall(false);
-  setCurrentCall(null);
-  setIncomingCall(null);
+    setIsInCall(false);
+    setCurrentCall(null);
+    setIncomingCall(null);
 
-  socket.emit("endCall", { callerId: user.uid });
+    socket.emit("endCall", { callerId: user.uid });
 
-  await updateDoc(doc(db, "users", user.uid), { status: "Available" });
+    await updateDoc(doc(db, "users", user.uid), { status: "Available" });
 
-  if (remoteAudio.current) {
-    remoteAudio.current.srcObject = null;
-  }
-};
+    if (remoteAudio.current) {
+      remoteAudio.current.srcObject = null;
+    }
+  };
 
   const handleSignIn = () => {
     signInWithPopup(auth, provider)
@@ -201,14 +211,14 @@ const endCall = async () => {
 
   useEffect(() => {
     socket.on("callEnded", () => {
-        setPeer(null);
-        setStream(null);
-        setIncomingCall(null);
-        setIsInCall(false);
+      setPeer(null);
+      setStream(null);
+      setIncomingCall(null);
+      setIsInCall(false);
     });
 
     return () => socket.off("callEnded");
-}, []);
+  }, []);
 
   return (
     <div className="min-h-screen bg-gray-100 flex justify-center items-center p-4">
@@ -239,7 +249,7 @@ const endCall = async () => {
 
           {incomingCall && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
-              {console.log(incomingCall, 'incoming call')}
+              {console.log(incomingCall, "incoming call")}
               <div className="bg-white rounded-2xl shadow-xl p-6 text-center w-full max-w-md animate-fadeIn">
                 <h3 className="text-lg font-semibold mb-2">Incoming Call 📞</h3>
                 <div className="flex flex-col items-center mb-4">
@@ -279,7 +289,11 @@ const endCall = async () => {
               {activeUsers.map((u) => (
                 <li
                   key={u.uid}
-                  className={`flex justify-between items-center p-4 rounded-lg shadow-sm ${u.status === "Busy" ? "border-l-4 border-red-500 bg-gray-50" : "border-l-4 border-green-500 bg-white"}`}
+                  className={`flex justify-between items-center p-4 rounded-lg shadow-sm ${
+                    u.status === "Busy"
+                      ? "border-l-4 border-red-500 bg-gray-50"
+                      : "border-l-4 border-green-500 bg-white"
+                  }`}
                 >
                   <div className="flex items-center">
                     <img
@@ -293,34 +307,28 @@ const endCall = async () => {
                     </div>
                   </div>
                   <div>
-
-                    {/* Show "End Call" button only for the caller and receiver */}
-{isInCall && (u.uid === user.uid || u.uid === currentCall) && (
-  <button
-    className="bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded-lg"
-    onClick={endCall}
-  >
-    End Call
-  </button>
-)}
-
-                    {u.status === "Available" && u.uid !== user.uid && (
-                      <button
-                        className="bg-green-500 hover:bg-green-600 text-white py-1 px-3 rounded-lg"
-                        onClick={() => startCall(u.uid)}
-                      >
-                        Call
-                      </button>
-                    )}
-                    {u.status === "Busy" && (
-                      <button
-                        className="bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded-lg"
-                        onClick={endCall}
-                      >
-                       BUSY
-                      </button>
-                    )}
-                  </div>
+  {/* Show "End Call" button only for the caller and receiver */}
+  {isInCall && (u.uid === user.uid || u.uid === currentCall) ? (
+    <button
+      className="bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded-lg"
+      onClick={endCall}
+    >
+      End Call
+    </button>
+  ) : u.status === "Busy" ? (
+    <span className="text-red-500 font-semibold">🟠 Busy</span>
+  ) : (
+    u.status === "Available" &&
+    u.uid !== user.uid && (
+      <button
+        className="bg-green-500 hover:bg-green-600 text-white py-1 px-3 rounded-lg"
+        onClick={() => startCall(u.uid)}
+      >
+        Call
+      </button>
+    )
+  )}
+</div>
                 </li>
               ))}
             </ul>

@@ -36,63 +36,70 @@ io.on("connection", (socket) => {
     io.emit("updateUsers", Object.values(activeUsers));
   });
 
-  socket.on("startCall", ({ callerId, receiverId, signal }) => {
-    console.log("Caller details:", activeUsers[callerId]);
-    
-    if (activeUsers[receiverId] && activeUsers[callerId]) {
-      activeUsers[callerId].status = "Busy";
-      activeUsers[receiverId].status = "Busy";
-  
-      ongoingCalls[callerId] = receiverId;
-      ongoingCalls[receiverId] = callerId;
-  
-      io.emit("updateUsers", Object.values(activeUsers));
-  
-      io.to(activeUsers[receiverId].socketId).emit("incomingCall", {
-        callerId,
-        callerName: activeUsers[callerId].name,
-        callerProfilePic: activeUsers[callerId].profilePic,
-        signal
-      });
-    }
-  });
-  
-
   socket.on("acceptCall", ({ callerId, signal }) => {
     if (activeUsers[callerId]) {
       io.to(activeUsers[callerId].socketId).emit("callAccepted", { signal });
     }
   });
 
-  socket.on("callRejected", ({ callerId }) => {
-    if (activeUsers[callerId]) {
-      io.to(activeUsers[callerId].socketId).emit("callEnded");
-      activeUsers[callerId].status = "Available";
-      delete ongoingCalls[callerId];
-      delete ongoingCalls[activeUsers[callerId]?.receiverId];
-      io.emit("updateUsers", Object.values(activeUsers));
-    }
-  });
+  
+  socket.on("startCall", ({ callerId, receiverId, signal }) => {
+    if (activeUsers[receiverId] && activeUsers[callerId]) {
+        activeUsers[callerId].status = "Busy";
+        activeUsers[receiverId].status = "Busy";
 
-  socket.on("endCall", ({ callerId }) => {
+        ongoingCalls[callerId] = receiverId;
+        ongoingCalls[receiverId] = callerId;
+
+        io.emit("updateUsers", Object.values(activeUsers));
+
+        io.to(activeUsers[receiverId].socketId).emit("incomingCall", {
+            callerId,
+            callerName: activeUsers[callerId].name,
+            callerProfilePic: activeUsers[callerId].profilePic,
+            signal
+        });
+    }
+});
+
+socket.on("callRejected", ({ callerId }) => {
+    if (activeUsers[callerId]) {
+        io.to(activeUsers[callerId].socketId).emit("callEnded");
+        
+        // Ensure both caller and receiver are updated to "Available"
+        activeUsers[callerId].status = "Available";
+
+        const receiverId = ongoingCalls[callerId];
+        if (receiverId && activeUsers[receiverId]) {
+            activeUsers[receiverId].status = "Available";
+            io.to(activeUsers[receiverId].socketId).emit("callEnded");
+        }
+
+        delete ongoingCalls[callerId];
+        delete ongoingCalls[receiverId];
+
+        io.emit("updateUsers", Object.values(activeUsers)); // Emit update to all clients
+    }
+});
+
+socket.on("endCall", ({ callerId }) => {
     const receiverId = ongoingCalls[callerId];
-    
+
     if (receiverId && activeUsers[receiverId]) {
         io.to(activeUsers[receiverId].socketId).emit("callEnded");
         activeUsers[receiverId].status = "Available";
     }
-    
+
     if (activeUsers[callerId]) {
         activeUsers[callerId].status = "Available";
         io.to(activeUsers[callerId].socketId).emit("callEnded");
     }
-    
+
     delete ongoingCalls[callerId];
     delete ongoingCalls[receiverId];
 
     io.emit("updateUsers", Object.values(activeUsers));
 });
- 
 
 socket.on("disconnect", () => {
   let disconnectedUserId = null;
