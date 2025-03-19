@@ -38,6 +38,16 @@ const App = () => {
       });
     }, 3000); // Play every 3 seconds, you can adjust the interval as needed
   };
+
+  const stopRingtone = () => {
+    // Stop repeating the ringtone
+    if (ringtoneInterval) {
+      clearInterval(ringtoneInterval); // Clear the interval
+    }
+    ringtone.pause(); // Pause the current ringtone
+    ringtone.currentTime = 0; // Reset the audio to the start
+  };
+  
   
 
   useEffect(() => {
@@ -96,13 +106,15 @@ const App = () => {
       startRingtone();
     });
 
-    window.addEventListener("beforeunload", handleBeforeUnload);
     return () => {
-      window.removeEventListener("beforeunload", handleBeforeUnload);
-      if (callTimeoutRef.current) clearTimeout(callTimeoutRef.current);
+      if (ringtoneInterval) {
+        clearInterval(ringtoneInterval); // Stop any ongoing interval
+        ringtone.pause(); // Pause the ringtone
+        ringtone.currentTime = 0; // Reset the audio to the start
+      }
     };
   }, [isInCall]);
-  
+
   const handleBeforeUnload = (event) => {
     if (isInCall) {
       event.preventDefault();
@@ -141,11 +153,7 @@ const App = () => {
 
   const acceptCall = async () => {
 
-    if (ringtoneInterval) {
-      clearInterval(ringtoneInterval); // Stop repeating the ringtone
-      ringtone.pause(); // Pause the current ringtone
-      ringtone.currentTime = 0; // Reset the audio to the start
-    }
+    stopRingtone();
     clearTimeout(callTimeoutRef.current); // Clear auto-end timeout
 
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -170,12 +178,10 @@ const App = () => {
     });
 
     setIncomingCall(null);
-
-    ringtone.pause();
-    ringtone.currentTime = 0;
   };
 
   const endCall = async () => {
+    stopRingtone();
     if (peer) {
       console.log("Destroying peer connection...");
       try {
@@ -204,10 +210,6 @@ const App = () => {
     if (remoteAudio.current) {
       remoteAudio.current.srcObject = null;
     }
-
-    // Pause ringtone when call ends
-    ringtone.pause();
-    ringtone.currentTime = 0;
   };
 
   const handleSignIn = () => {
@@ -246,12 +248,7 @@ const App = () => {
   };
 
   const rejectCall = () => {
-
-    if (ringtoneInterval) {
-      clearInterval(ringtoneInterval); // Stop repeating the ringtone
-      ringtone.pause(); // Pause the current ringtone
-      ringtone.currentTime = 0; // Reset the audio to the start
-    }
+    stopRingtone();
     if (incomingCall) {
       socket.emit("callRejected", { callerId: incomingCall.callerId });
       setIncomingCall(null);
