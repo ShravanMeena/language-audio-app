@@ -4,9 +4,11 @@ import { signInWithPopup, onAuthStateChanged, signOut } from "firebase/auth";
 import { doc, setDoc, getDoc, updateDoc } from "firebase/firestore";
 import io from "socket.io-client";
 import SimplePeer from "simple-peer";
+import Header from "./components/Header";
+import Layout from "./layout";
 
 const SERVER_URL =
-  "https://c08e-2409-40d0-31-90cf-4859-d4cd-9624-e368.ngrok-free.app"; // Replace with your actual server URL
+  "http://localhost:8000"; // Replace with your actual server URL
 const socket = io(SERVER_URL);
 
 const App = () => {
@@ -22,47 +24,53 @@ const App = () => {
   const callTimeoutRef = useRef(null); // Reference for call timeout
 
   const ringtone = new Audio("/ringtone.mp3");
+
+  useEffect(() => {
+    const unlockAudio = async () => {
+      try {
+        await ringtone.play();
+        console.log("Audio unlocked by playing");
+        ringtone.pause();
+        ringtone.currentTime = 0;
+      } catch (error) {
+        console.error("Unlock failed:", error);
+      }
+
+      // Remove listeners after unlocking
+      window.removeEventListener("click", unlockAudio);
+      window.removeEventListener("touchstart", unlockAudio);
+    };
+
+    window.addEventListener("click", unlockAudio);
+    window.addEventListener("touchstart", unlockAudio);
+
+    return () => {
+      window.removeEventListener("click", unlockAudio);
+      window.removeEventListener("touchstart", unlockAudio);
+    };
+  }, []);
+
+
   let ringtoneInterval = null;
 
   const startRingtone = () => {
-    // Start the ringtone playing on loop until the user accepts or rejects the call
-    ringtone.loop = true;  // Enable looping
-    ringtone.play().catch((error) => {
+    ringtone.loop = true;
+    ringtone.play().then(() => {
+      console.log("Ringtone started playing");
+    }).catch((error) => {
       console.error("Error playing ringtone:", error);
     });
-  
-    // Play ringtone at intervals (to keep it playing)
-    ringtoneInterval = setInterval(() => {
-      ringtone.play().catch((error) => {
-        console.error("Error playing ringtone at interval:", error);
-      });
-    }, 3000); // Play every 3 seconds, you can adjust the interval as needed
   };
+
 
   const stopRingtone = () => {
-    // Stop repeating the ringtone
-    if (ringtoneInterval) {
-      clearInterval(ringtoneInterval); // Clear the interval
+    if (ringtone) {
+      ringtone.pause();
+      ringtone.currentTime = 0;
+      console.log("Ringtone stopped");
     }
-    ringtone.pause(); // Pause the current ringtone
-    ringtone.currentTime = 0; // Reset the audio to the start
   };
-  
-  
 
-  useEffect(() => {
-    const audioContextUnlock = () => {
-      ringtone.play();  // Play to unlock the context
-      ringtone.pause();  // Pause immediately to stop playing sound
-    };
-
-    // This will run after the first user interaction (e.g., login)
-    if (user) {
-      audioContextUnlock();  // Unlock audio after user login
-    }
-
-    return () => window.removeEventListener("click", audioContextUnlock);
-  }, [user]);
 
   useEffect(() => {
     onAuthStateChanged(auth, async (user) => {
@@ -262,8 +270,7 @@ const App = () => {
       setStream(null);
       setIncomingCall(null);
       setIsInCall(false);
-      ringtone.pause();
-      ringtone.currentTime = 0; 
+      stopRingtone();
     });
 
     return () => socket.off("callEnded");
@@ -272,19 +279,9 @@ const App = () => {
   return (
     <div className="min-h-screen bg-gray-100 flex justify-center items-center p-4">
       {user ? (
-        <div className="bg-white rounded-2xl shadow-lg p-6 w-full max-w-xl">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-bold">Welcome, {user.displayName}</h2>
-            <button
-              className="bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded-lg"
-              onClick={handleLogout}
-            >
-              Logout
-            </button>
-          </div>
-
+         <Layout user={user} handleLogout={handleLogout}>
           <div className="mb-4">
-            <label className="block text-gray-600 mb-2">Select Language</label>
+            <label className="block text-gray-600 mb-2">Which Language do you want to learn ?</label>
             <select
               className="w-full p-2 border rounded-lg"
               value={language}
@@ -338,11 +335,10 @@ const App = () => {
               {activeUsers.map((u) => (
                 <li
                   key={u.uid}
-                  className={`flex justify-between items-center p-4 rounded-lg shadow-sm ${
-                    u.status === "Busy"
+                  className={`flex justify-between items-center p-4 rounded-lg shadow-sm ${u.status === "Busy"
                       ? "border-l-4 border-red-500 bg-gray-50"
                       : "border-l-4 border-green-500 bg-white"
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center">
                     <img
@@ -356,34 +352,34 @@ const App = () => {
                     </div>
                   </div>
                   <div>
-  {/* Show "End Call" button only for the caller and receiver */}
-  {isInCall && (u.uid === user.uid || u.uid === currentCall) ? (
-    <button
-      className="bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded-lg"
-      onClick={endCall}
-    >
-      End Call
-    </button>
-  ) : u.status === "Busy" ? (
-    <span className="text-red-500 font-semibold">🟠 Busy</span>
-  ) : (
-    u.status === "Available" &&
-    u.uid !== user.uid && (
-      <button
-        className="bg-green-500 hover:bg-green-600 text-white py-1 px-3 rounded-lg"
-        onClick={() => startCall(u.uid)}
-      >
-        Call
-      </button>
-    )
-  )}
-</div>
+                    {/* Show "End Call" button only for the caller and receiver */}
+                    {isInCall && (u.uid === user.uid || u.uid === currentCall) ? (
+                      <button
+                        className="bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded-lg"
+                        onClick={endCall}
+                      >
+                        End Call
+                      </button>
+                    ) : u.status === "Busy" ? (
+                      <span className="text-red-500 font-semibold">🟠 Busy</span>
+                    ) : (
+                      u.status === "Available" &&
+                      u.uid !== user.uid && (
+                        <button
+                          className="bg-green-500 hover:bg-green-600 text-white py-1 px-3 rounded-lg"
+                          onClick={() => startCall(u.uid)}
+                        >
+                          Call
+                        </button>
+                      )
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>
           </div>
           <audio ref={remoteAudio} autoPlay />
-        </div>
+        </Layout>
       ) : (
         <div className="text-center">
           <h2 className="text-2xl font-bold mb-6">Welcome to Voice Chat App</h2>
